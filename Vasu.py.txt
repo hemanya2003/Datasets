@@ -1,0 +1,69 @@
+import streamlit as st
+import geopandas as gpd
+import pydeck as pdk
+
+# Load your shapefile
+shapefile_path = "LUSE_FINAL.shp"  # Make sure the shapefile is in the repo
+gdf = gpd.read_file(shapefile_path)
+
+# Reproject to EPSG:4326 (WGS84) if necessary
+if gdf.crs != 'EPSG:4326':
+    gdf = gdf.to_crs(epsg=4326)
+
+# Explode MultiPolygon geometries into individual Polygon geometries
+gdf = gdf.explode(index_parts=True).reset_index(drop=True)
+
+# Define heights for each LANDUSE category
+landuse_heights = {
+    'bare': 15, 'built': 30, 'crops': 10, 'grass': 20,
+    'shrub_and_scrub': 25, 'trees': 35, 'water': -5
+}
+
+# Define colors for each LANDUSE category (in RGB format)
+landuse_colors = {
+    'bare': [255, 192, 203], 'built': [255, 0, 0], 'crops': [255, 255, 0],
+    'grass': [144, 238, 144], 'shrub_and_scrub': [255, 0, 255], 'trees': [0, 128, 0], 'water': [0, 0, 255]
+}
+
+# Assign heights and colors
+gdf['height'] = gdf['LANDUSE'].map(landuse_heights)
+gdf['color'] = gdf['LANDUSE'].map(landuse_colors)
+
+# Replace with your MapTiler API key
+MAPTILER_API_KEY = "E6ZRsLot4eQsQImxowwm"
+
+# Create a PyDeck layer
+polygon_layer = pdk.Layer(
+    'PolygonLayer',
+    data=gdf,
+    get_polygon='geometry.coordinates',
+    extruded=True,
+    get_elevation='height',
+    get_fill_color='color',
+    elevation_scale=1,
+    pickable=True,
+)
+
+# Create a TileLayer for MapTiler Satellite Imagery
+tile_layer = pdk.Layer(
+    'TileLayer',
+    data=None,
+    get_tile_data=f'https://api.maptiler.com/maps/hybrid/{{z}}/{{x}}/{{y}}.jpg?key={MAPTILER_API_KEY}',
+    pickable=False,
+)
+
+# Set the view state to center on the data
+view_state = pdk.ViewState(
+    latitude=gdf.geometry.centroid.y.mean(),
+    longitude=gdf.geometry.centroid.x.mean(),
+    zoom=10,
+    pitch=45,
+    bearing=30,
+)
+
+# Create a PyDeck map
+deck = pdk.Deck(layers=[tile_layer, polygon_layer], initial_view_state=view_state)
+
+# Streamlit App
+st.title("3D Land Use Visualization")
+st.pydeck_chart(deck)
